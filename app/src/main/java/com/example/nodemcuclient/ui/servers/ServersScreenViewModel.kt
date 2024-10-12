@@ -83,10 +83,7 @@ class ServersViewModel : ViewModel() {
         // Save data // shape {server: MCUServer, serverList: mutableList<MCUServer>}
         val gson = Gson()
 
-        // Check if the server map is empty before trying to access its first element
-        val selectedServer = if (server.isNotEmpty()) server.values.first() else null
-
-        if (selectedServer == null) {
+        if (selectedServer.value.isEmpty()) {
             println("Error: No server available to save.")
             return // Exit the function if there is no server
         }
@@ -101,15 +98,13 @@ class ServersViewModel : ViewModel() {
         val file = File(context.filesDir, filename)
 
         try {
-            // Check if the file exists, if not, create it with empty values
-            if (!file.exists()) {
-                println("Creating data.json with default empty values")
-                FileWriter(file).use { writer ->
-                    writer.write(jsonString)
-                }
-            } else {
-                println("data.json already exists")
+            FileWriter(file).use { writer ->
+                val save = SavedData(selectedServer = server.values.first(), serverList = serverList)
+                val gson = Gson()
+                val jsonString = gson.toJson(save)
+                writer.write(jsonString)
             }
+            println("data.json already exists")
         } catch (e: IOException) {
             e.printStackTrace() // Handle the error
         }
@@ -124,7 +119,8 @@ class ServersViewModel : ViewModel() {
                 Log.d(TAG, "File does not exist")
                 FileWriter(file).use { writer ->
                     val emptyServer = MCUServer(name = "", url = "")
-                    val emptyData = SavedData(serverList = emptyList(), selectedServer = emptyServer)
+                    val emptyData =
+                        SavedData(serverList = emptyList(), selectedServer = emptyServer)
                     val gson = Gson()
                     val jsonString = gson.toJson(emptyData)
                     writer.write(jsonString)
