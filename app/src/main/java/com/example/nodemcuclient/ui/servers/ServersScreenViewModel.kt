@@ -79,20 +79,11 @@ class ServersViewModel : ViewModel() {
         serverList: MutableList<MCUServer>,
         filename: String = "data.json"
     ) {
-        // Convert object to JSON string
-        // Save data // shape {server: MCUServer, serverList: mutableList<MCUServer>}
-        val gson = Gson()
 
         if (selectedServer.value.isEmpty()) {
             println("Error: No server available to save.")
             return // Exit the function if there is no server
         }
-
-        // Create the data map with selectedServer and serverList
-        val dataMap = mapOf("selectedServer" to selectedServer, "serverList" to serverList)
-
-        // Convert the data to a JSON string
-        val jsonString = gson.toJson(dataMap)
 
         // Get the file in the internal storage directory
         val file = File(context.filesDir, filename)

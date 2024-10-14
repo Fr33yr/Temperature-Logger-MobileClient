@@ -4,10 +4,15 @@ package com.example.nodemcuclient.ui.logs
 import android.content.ContentValues.TAG
 import android.content.Context
 import android.util.Log
+import androidx.compose.runtime.remember
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nodemcuclient.ui.servers.ServersViewModel.SavedData
 import com.google.gson.Gson
+import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
+import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
 import dev.icerock.moko.socket.Socket
 import dev.icerock.moko.socket.SocketEvent
 import dev.icerock.moko.socket.SocketOptions
@@ -20,6 +25,15 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okio.IOException
 import java.io.File
+import com.patrykandpatrick.vico.core.common.data.ExtraStore
+import java.text.DateFormatSymbols
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 class LogsViewModel : ViewModel() {
 
@@ -68,6 +82,10 @@ class LogsViewModel : ViewModel() {
     )
     var hourlylogs: StateFlow<MutableList<TemperatureLog>> = _hourlylogs
 
+    // Chart Sheets
+    private val _modelProducer = MutableStateFlow(CartesianChartModelProducer())
+    val modelProducer: StateFlow<CartesianChartModelProducer> = _modelProducer
+
     suspend fun getWeeklyLogs() {
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
@@ -79,8 +97,25 @@ class LogsViewModel : ViewModel() {
                     val result = response.body?.string()
                     val gson = Gson()
                     val logs = gson.fromJson(result, Array<TemperatureLog>::class.java).toList()
-                    //_weeklylogs.value = logs.toMutableList()
-                    Log.d(TAG, "${weeklylogs.value}")
+                    _weeklylogs.value = logs.toMutableList()
+
+                    if (weeklylogs.value.isNotEmpty()) {
+                        val chartData: MutableMap<ZonedDateTime, Float> = mutableMapOf()
+
+                        for (item in weeklylogs.value) {
+                            val dateKey = ZonedDateTime.parse(item.created_at)
+                            chartData[dateKey] = item.value
+                        }
+
+                        val xToDates = chartData.keys.associateBy { it.toEpochSecond().toDouble() }
+                        val xToDateMapKey = ExtraStore.Key<Map<Double, ZonedDateTime>>()
+
+                        _modelProducer.value.runTransaction {
+                            lineSeries { series(xToDates.keys, chartData.values) }
+                            extras { it[xToDateMapKey] = xToDates }
+                        }
+
+                    }
                 }
             } catch (e: IOException) {
                 e.printStackTrace()
@@ -188,4 +223,22 @@ class LogsViewModel : ViewModel() {
         }
     }
 
+    private fun formatDateToHours(date: String): String? {
+        // Parse the string into a ZonedDateTime
+        val zonedDateTime = ZonedDateTime.parse(date)
+
+        // Define the desired output format: time (e.g., 11:14 PM)
+        val formatter = DateTimeFormatter.ofPattern("h:mm a")
+
+        // Convert the ZonedDateTime to the local time zone and format it
+        return zonedDateTime.withZoneSameInstant(ZoneId.systemDefault()).format(formatter)
+    }
+
+    private fun formatDateToDaysAndHours(date: String): String? {
+        val zonedDateTime = ZonedDateTime.parse(date)
+        // Desired format
+        val formatter = DateTimeFormatter.ofPattern("MMMM d, h:mm a")
+        // Convert the ZonedDateTime to the local time zone and format it
+        return zonedDateTime.withZoneSameInstant(ZoneId.systemDefault()).format(formatter)
+    }
 }

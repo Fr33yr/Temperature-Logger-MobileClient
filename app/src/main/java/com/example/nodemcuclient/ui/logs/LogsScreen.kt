@@ -1,6 +1,8 @@
 package com.example.nodemcuclient.ui.logs
 
 import android.annotation.SuppressLint
+import android.content.ContentValues.TAG
+import android.util.Log
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,16 +28,30 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.example.nodemcuclient.ui.components.AppTopBar
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottom
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStart
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
+import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
+import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
+import com.patrykandpatrick.vico.core.cartesian.axis.VerticalAxis
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModel
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianLayerModel
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.core.cartesian.data.ColumnCartesianLayerModel
 import com.patrykandpatrick.vico.core.cartesian.data.LineCartesianLayerModel
 import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
 import com.patrykandpatrick.vico.core.common.data.ExtraStore
 import kotlinx.coroutines.launch
+import java.text.DateFormatSymbols
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @ExperimentalMaterial3Api
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
@@ -47,12 +63,18 @@ fun LogsScreen(
 
     val context = LocalContext.current
     val connectionStatus = viewModel.connectionStatus.collectAsState().value
+    val modelProducer = viewModel.modelProducer.collectAsState().value
 
-    // Datasheet
-    data class TemperatureData(val time: Long, val temperature: Double)
 
-    val modelProducer = remember { CartesianChartModelProducer() }
     val coroutineScope = rememberCoroutineScope()
+    // Date formats
+    val monthNames = DateFormatSymbols.getInstance(Locale.US).shortMonths
+    val bottomAxisValueFormatter = CartesianValueFormatter { _, x, _ ->
+        Log.d(TAG, "Date from formatter $x")
+        val date = LocalDateTime.ofEpochSecond(x.toLong(), 0, ZoneOffset.UTC) // Convert the x value back to a LocalDate
+        val monthName = monthNames[date.monthValue - 1] // Get the month name
+        "${date.dayOfMonth} $monthName, ${date.hour}:${date.minute}" // Format as short year
+    }
 
     Scaffold(
         topBar = { AppTopBar(title = "Logs Screen") },
@@ -76,17 +98,8 @@ fun LogsScreen(
                 Column() {
                     Row() {
                         Button(onClick = {
-
                             coroutineScope.launch {
                                 viewModel.getWeeklyLogs()
-                                modelProducer.runTransaction {
-                                    lineSeries {
-                                        series(
-                                            x = listOf(1f, 2f, 3f, 4f),
-                                            y = listOf(5f, 3f, 8f, 2f)
-                                        )
-                                    }
-                                }
                             }
                         }, shape = RectangleShape) {
                             Text("Week")
@@ -106,12 +119,19 @@ fun LogsScreen(
                             .fillMaxWidth()
                             .height(300.dp)
                     ) {
+                        val dateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")
+                        val xToDateMapKey = ExtraStore.Key<Map<Float, LocalDate>>()
                         CartesianChartHost(
                             chart = rememberCartesianChart(
-                                rememberLineCartesianLayer()
+                                rememberLineCartesianLayer(),
+                                startAxis = VerticalAxis.rememberStart(),
+                                bottomAxis = HorizontalAxis.rememberBottom(
+                                    valueFormatter = bottomAxisValueFormatter
+                                ),
                             ),
                             modelProducer = modelProducer,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            zoomState = rememberVicoZoomState(zoomEnabled = true),
                         )
                     }
                 }
