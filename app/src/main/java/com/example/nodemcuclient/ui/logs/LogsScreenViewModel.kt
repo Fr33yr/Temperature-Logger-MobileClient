@@ -3,8 +3,10 @@ package com.example.nodemcuclient.ui.logs
 
 import android.content.ContentValues.TAG
 import android.content.Context
+import android.text.method.TextKeyListener.clear
 import android.util.Log
 import androidx.compose.runtime.remember
+import androidx.core.view.VelocityTrackerCompat.clear
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nodemcuclient.ui.servers.ServersViewModel.SavedData
@@ -70,17 +72,14 @@ class LogsViewModel : ViewModel() {
     private var _weeklylogs: MutableStateFlow<MutableList<TemperatureLog>> = MutableStateFlow(
         mutableListOf()
     )
-    var weeklylogs: StateFlow<MutableList<TemperatureLog>> = _weeklylogs
 
     private var _dalylogs: MutableStateFlow<MutableList<TemperatureLog>> = MutableStateFlow(
         mutableListOf()
     )
-    var dalylogs: StateFlow<MutableList<TemperatureLog>> = _dalylogs
 
     private var _hourlylogs: MutableStateFlow<MutableList<TemperatureLog>> = MutableStateFlow(
         mutableListOf()
     )
-    var hourlylogs: StateFlow<MutableList<TemperatureLog>> = _hourlylogs
 
     // Chart Sheets
     private val _modelProducer = MutableStateFlow(CartesianChartModelProducer())
@@ -99,10 +98,10 @@ class LogsViewModel : ViewModel() {
                     val logs = gson.fromJson(result, Array<TemperatureLog>::class.java).toList()
                     _weeklylogs.value = logs.toMutableList()
 
-                    if (weeklylogs.value.isNotEmpty()) {
+                    if (_weeklylogs.value.isNotEmpty()) {
                         val chartData: MutableMap<ZonedDateTime, Float> = mutableMapOf()
 
-                        for (item in weeklylogs.value) {
+                        for (item in _weeklylogs.value) {
                             val dateKey = ZonedDateTime.parse(item.created_at)
                             chartData[dateKey] = item.value
                         }
@@ -115,6 +114,88 @@ class LogsViewModel : ViewModel() {
                             extras { it[xToDateMapKey] = xToDates }
                         }
 
+                    }else {
+                        _modelProducer.value.runTransaction { }
+                    }
+                }
+            } catch (e: IOException) {
+                e.printStackTrace()
+                null // Return null in case of error
+            }
+        }
+    }
+
+    suspend fun getDalyLogs(){
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${_serverUrl.value}day")
+                .build()
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) throw IOException("Unexpected code $response")
+                    val result = response.body?.string()
+                    val gson = Gson()
+                    val logs = gson.fromJson(result, Array<TemperatureLog>::class.java).toList()
+                    _dalylogs.value = logs.toMutableList()
+
+                    if (_dalylogs.value.isNotEmpty()) {
+                        val chartData: MutableMap<ZonedDateTime, Float> = mutableMapOf()
+
+                        for (item in _dalylogs.value) {
+                            val dateKey = ZonedDateTime.parse(item.created_at)
+                            chartData[dateKey] = item.value
+                        }
+
+                        val xToDates = chartData.keys.associateBy { it.toEpochSecond().toDouble() }
+                        val xToDateMapKey = ExtraStore.Key<Map<Double, ZonedDateTime>>()
+
+                        _modelProducer.value.runTransaction {
+                            lineSeries { series(xToDates.keys, chartData.values) }
+                            extras { it[xToDateMapKey] = xToDates }
+                        }
+
+                    }else {
+                        _modelProducer.value.runTransaction { }
+                    }
+                }
+            } catch (e: IOException) {
+                e.printStackTrace()
+                null // Return null in case of error
+            }
+        }
+    }
+
+    suspend fun getHourlyLogs(){
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${_serverUrl.value}hour")
+                .build()
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) throw IOException("Unexpected code $response")
+                    val result = response.body?.string()
+                    val gson = Gson()
+                    val logs = gson.fromJson(result, Array<TemperatureLog>::class.java).toList()
+                    _hourlylogs.value = logs.toMutableList()
+
+                    if (_hourlylogs.value.isNotEmpty()) {
+                        val chartData: MutableMap<ZonedDateTime, Float> = mutableMapOf()
+
+                        for (item in _hourlylogs.value) {
+                            val dateKey = ZonedDateTime.parse(item.created_at)
+                            chartData[dateKey] = item.value
+                        }
+
+                        val xToDates = chartData.keys.associateBy { it.toEpochSecond().toDouble() }
+                        val xToDateMapKey = ExtraStore.Key<Map<Double, ZonedDateTime>>()
+
+                        _modelProducer.value.runTransaction {
+                            lineSeries { series(xToDates.keys, chartData.values) }
+                            extras { it[xToDateMapKey] = xToDates }
+                        }
+
+                    }else {
+                        _modelProducer.value.runTransaction { }
                     }
                 }
             } catch (e: IOException) {

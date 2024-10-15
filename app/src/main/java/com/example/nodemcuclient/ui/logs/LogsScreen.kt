@@ -70,8 +70,11 @@ fun LogsScreen(
     // Date formats
     val monthNames = DateFormatSymbols.getInstance(Locale.US).shortMonths
     val bottomAxisValueFormatter = CartesianValueFormatter { _, x, _ ->
-        Log.d(TAG, "Date from formatter $x")
-        val date = LocalDateTime.ofEpochSecond(x.toLong(), 0, ZoneOffset.UTC) // Convert the x value back to a LocalDate
+        val date = LocalDateTime.ofEpochSecond(
+            x.toLong(),
+            0,
+            ZoneOffset.UTC
+        ) // Convert the x value back to a LocalDate
         val monthName = monthNames[date.monthValue - 1] // Get the month name
         "${date.dayOfMonth} $monthName, ${date.hour}:${date.minute}" // Format as short year
     }
@@ -105,8 +108,20 @@ fun LogsScreen(
                             Text("Week")
                         }
                         Spacer(modifier = Modifier.padding(horizontal = 1.dp))
-                        Button(onClick = { print("") }, shape = RectangleShape) {
+                        Button(onClick = {
+                            coroutineScope.launch {
+                                viewModel.getDalyLogs()
+                            }
+                        }, shape = RectangleShape) {
                             Text("Day")
+                        }
+                        Spacer(modifier = Modifier.padding(horizontal = 1.dp))
+                        Button(onClick = {
+                            coroutineScope.launch {
+                                viewModel.getHourlyLogs()
+                            }
+                        }, shape = RectangleShape) {
+                            Text("Hourly")
                         }
                         Spacer(modifier = Modifier.padding(horizontal = 1.dp))
                         Button(onClick = { print("") }, shape = RectangleShape) {
@@ -117,7 +132,7 @@ fun LogsScreen(
                         elevation = CardDefaults.elevatedCardElevation(4.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(300.dp)
+                            .height(250.dp)
                     ) {
                         val dateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")
                         val xToDateMapKey = ExtraStore.Key<Map<Float, LocalDate>>()
@@ -130,7 +145,7 @@ fun LogsScreen(
                                 ),
                             ),
                             modelProducer = modelProducer,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
                             zoomState = rememberVicoZoomState(zoomEnabled = true),
                         )
                     }
