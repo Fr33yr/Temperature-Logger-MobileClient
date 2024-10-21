@@ -3,8 +3,10 @@ package com.example.nodemcuclient.ui.logs
 
 import android.content.ContentValues.TAG
 import android.content.Context
+import android.nfc.Tag
 import android.text.method.TextKeyListener.clear
 import android.util.Log
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.remember
 import androidx.core.view.VelocityTrackerCompat.clear
 import androidx.lifecycle.ViewModel
@@ -28,6 +30,7 @@ import okhttp3.Request
 import okio.IOException
 import java.io.File
 import com.patrykandpatrick.vico.core.common.data.ExtraStore
+import kotlinx.coroutines.coroutineScope
 import java.text.DateFormatSymbols
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -65,7 +68,7 @@ class LogsViewModel : ViewModel() {
     data class TemperatureLog(
         val id: Int,
         val name: String,
-        val value: Float,
+        val temperature: Float,
         val created_at: String
     )
 
@@ -81,9 +84,15 @@ class LogsViewModel : ViewModel() {
         mutableListOf()
     )
 
+    private var _livelogs: MutableStateFlow<MutableList<TemperatureLog>> = MutableStateFlow(
+        mutableListOf()
+    )
+
     // Chart Sheets
     private val _modelProducer = MutableStateFlow(CartesianChartModelProducer())
     val modelProducer: StateFlow<CartesianChartModelProducer> = _modelProducer
+    private var _isLiveChart = MutableStateFlow(false)
+    var isLiveChart: StateFlow<Boolean> = _isLiveChart
 
     suspend fun getWeeklyLogs() {
         withContext(Dispatchers.IO) {
@@ -94,16 +103,18 @@ class LogsViewModel : ViewModel() {
                 client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) throw IOException("Unexpected code $response")
                     val result = response.body?.string()
+                    Log.d(TAG, "Raw JSON response: $result")
                     val gson = Gson()
                     val logs = gson.fromJson(result, Array<TemperatureLog>::class.java).toList()
+                    Log.d(TAG, "Deserialized JSON response $logs")
                     _weeklylogs.value = logs.toMutableList()
-
+                    Log.d(TAG, "Weekly logs ${_weeklylogs.value}")
                     if (_weeklylogs.value.isNotEmpty()) {
                         val chartData: MutableMap<ZonedDateTime, Float> = mutableMapOf()
 
                         for (item in _weeklylogs.value) {
                             val dateKey = ZonedDateTime.parse(item.created_at)
-                            chartData[dateKey] = item.value
+                            chartData[dateKey] = item.temperature
                         }
 
                         val xToDates = chartData.keys.associateBy { it.toEpochSecond().toDouble() }
@@ -114,7 +125,7 @@ class LogsViewModel : ViewModel() {
                             extras { it[xToDateMapKey] = xToDates }
                         }
 
-                    }else {
+                    } else {
                         _modelProducer.value.runTransaction { }
                     }
                 }
@@ -125,7 +136,7 @@ class LogsViewModel : ViewModel() {
         }
     }
 
-    suspend fun getDalyLogs(){
+    suspend fun getDalyLogs() {
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
                 .url("${_serverUrl.value}day")
@@ -143,7 +154,7 @@ class LogsViewModel : ViewModel() {
 
                         for (item in _dalylogs.value) {
                             val dateKey = ZonedDateTime.parse(item.created_at)
-                            chartData[dateKey] = item.value
+                            chartData[dateKey] = item.temperature
                         }
 
                         val xToDates = chartData.keys.associateBy { it.toEpochSecond().toDouble() }
@@ -154,7 +165,7 @@ class LogsViewModel : ViewModel() {
                             extras { it[xToDateMapKey] = xToDates }
                         }
 
-                    }else {
+                    } else {
                         _modelProducer.value.runTransaction { }
                     }
                 }
@@ -165,7 +176,7 @@ class LogsViewModel : ViewModel() {
         }
     }
 
-    suspend fun getHourlyLogs(){
+    suspend fun getHourlyLogs() {
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
                 .url("${_serverUrl.value}hour")
@@ -180,10 +191,10 @@ class LogsViewModel : ViewModel() {
 
                     if (_hourlylogs.value.isNotEmpty()) {
                         val chartData: MutableMap<ZonedDateTime, Float> = mutableMapOf()
-
+                        Log.d(TAG, "Hourly logs ${_hourlylogs.value}")
                         for (item in _hourlylogs.value) {
                             val dateKey = ZonedDateTime.parse(item.created_at)
-                            chartData[dateKey] = item.value
+                            chartData[dateKey] = item.temperature
                         }
 
                         val xToDates = chartData.keys.associateBy { it.toEpochSecond().toDouble() }
@@ -194,7 +205,7 @@ class LogsViewModel : ViewModel() {
                             extras { it[xToDateMapKey] = xToDates }
                         }
 
-                    }else {
+                    } else {
                         _modelProducer.value.runTransaction { }
                     }
                 }
@@ -205,26 +216,62 @@ class LogsViewModel : ViewModel() {
         }
     }
 
+    //Live logs
+    private suspend fun getLiveLogs() {
+        Log.d(TAG, "getLiveLogs ${_livelogs.value}")
+        withContext(Dispatchers.IO) {
+            try {
+                if (_livelogs.value.isNotEmpty()) {
+                    val chartData: MutableMap<ZonedDateTime, Float> = mutableMapOf()
+
+                    for (item in _livelogs.value) {
+                        val dateKey = ZonedDateTime.parse(item.created_at)
+                        chartData[dateKey] = item.temperature
+                    }
+
+                    val xToDates = chartData.keys.associateBy { it.toEpochSecond().toDouble() }
+                    val xToDateMapKey = ExtraStore.Key<Map<Double, ZonedDateTime>>()
+
+                    _modelProducer.value.runTransaction {
+                        lineSeries { series(xToDates.keys, chartData.values) }
+                        extras { it[xToDateMapKey] = xToDates }
+                    }
+
+                } else {
+                    Log.e(TAG, "No live logs have arrived yet")
+                    _modelProducer.value.runTransaction { }
+                }
+            } catch (e: IOException) {
+                e.printStackTrace()
+                null // Return null in case of error
+            }
+        }
+    }
+
+    suspend fun setChartToLive(isLive: Boolean) {
+        _modelProducer.value.runTransaction { }
+        _isLiveChart.value = isLive
+    }
+
     fun loadLogs(context: Context) {
-        val file = File(context.filesDir, "data.json") // Make sure the file name is included
+        val file = File(context.filesDir, "data.json")
 
         viewModelScope.launch(Dispatchers.IO) {
             if (isConnecting) return@launch
 
-            // Debounce mechanism
             if (System.currentTimeMillis() - lastConnectTime < connectDelay) return@launch
             lastConnectTime = System.currentTimeMillis()
 
             if (!file.exists()) {
                 Log.d(TAG, "File does not exist")
-                return@launch // Exit the function if the file doesn't exist
+                return@launch
             }
 
             val jsonString = file.readText()
 
             if (jsonString.isBlank()) {
                 Log.d(TAG, "File is empty or contains only whitespace")
-                return@launch // Exit the function if the file is empty
+                return@launch
             }
 
             try {
@@ -270,6 +317,7 @@ class LogsViewModel : ViewModel() {
                         transport = SocketOptions.Transport.WEBSOCKET
                     )
                 ) {
+                    // Connection events
                     on(SocketEvent.Connect) {
                         println("Connect")
                         Log.d(TAG, "Connect")
@@ -290,6 +338,23 @@ class LogsViewModel : ViewModel() {
                         Log.d(TAG, "Reconnecting")
                         _connectionStatus.value = ConnectionStatus.AWAITING
                     }
+                    // Live logs event
+                    on("logsupdate") { data ->
+                        //exact shape of data {"id":187,"name":"sensor_1","temperature":27.13,"created_at":"2024-10-16T22:10:00.309Z"}
+                        if (data.isNotEmpty()) {
+                            Log.d(TAG, "$data data")
+                            val gson = Gson()
+                            val tempLog = gson.fromJson(data, TemperatureLog::class.java)
+                            //if(_livelogs.value.size > 20){}
+                            //Log.d(TAG, "$tempLog templog")
+                            _livelogs.value.add(tempLog)
+                            if (isLiveChart.value) {
+                                viewModelScope.launch {
+                                    getLiveLogs()
+                                }
+                            }
+                        }
+                    }
                 }
                 // Attempt to connect
                 try {
@@ -304,22 +369,4 @@ class LogsViewModel : ViewModel() {
         }
     }
 
-    private fun formatDateToHours(date: String): String? {
-        // Parse the string into a ZonedDateTime
-        val zonedDateTime = ZonedDateTime.parse(date)
-
-        // Define the desired output format: time (e.g., 11:14 PM)
-        val formatter = DateTimeFormatter.ofPattern("h:mm a")
-
-        // Convert the ZonedDateTime to the local time zone and format it
-        return zonedDateTime.withZoneSameInstant(ZoneId.systemDefault()).format(formatter)
-    }
-
-    private fun formatDateToDaysAndHours(date: String): String? {
-        val zonedDateTime = ZonedDateTime.parse(date)
-        // Desired format
-        val formatter = DateTimeFormatter.ofPattern("MMMM d, h:mm a")
-        // Convert the ZonedDateTime to the local time zone and format it
-        return zonedDateTime.withZoneSameInstant(ZoneId.systemDefault()).format(formatter)
-    }
 }

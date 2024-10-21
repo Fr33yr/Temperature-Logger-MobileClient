@@ -102,6 +102,7 @@ fun LogsScreen(
                     Row() {
                         Button(onClick = {
                             coroutineScope.launch {
+                                viewModel.setChartToLive(false)
                                 viewModel.getWeeklyLogs()
                             }
                         }, shape = RectangleShape) {
@@ -110,6 +111,7 @@ fun LogsScreen(
                         Spacer(modifier = Modifier.padding(horizontal = 1.dp))
                         Button(onClick = {
                             coroutineScope.launch {
+                                viewModel.setChartToLive(false)
                                 viewModel.getDalyLogs()
                             }
                         }, shape = RectangleShape) {
@@ -118,13 +120,18 @@ fun LogsScreen(
                         Spacer(modifier = Modifier.padding(horizontal = 1.dp))
                         Button(onClick = {
                             coroutineScope.launch {
+                                viewModel.setChartToLive(false)
                                 viewModel.getHourlyLogs()
                             }
                         }, shape = RectangleShape) {
                             Text("Hourly")
                         }
                         Spacer(modifier = Modifier.padding(horizontal = 1.dp))
-                        Button(onClick = { print("") }, shape = RectangleShape) {
+                        Button(onClick = {
+                            coroutineScope.launch {
+                                viewModel.setChartToLive(true)
+                            }
+                        }, shape = RectangleShape) {
                             Text("Live")
                         }
                     }
@@ -145,7 +152,9 @@ fun LogsScreen(
                                 ),
                             ),
                             modelProducer = modelProducer,
-                            modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 20.dp),
                             zoomState = rememberVicoZoomState(zoomEnabled = true),
                         )
                     }
